@@ -9,14 +9,16 @@ console.firebase.google.com → **Add project** → call it `uncover`.
 Google Analytics is not needed. The free Spark plan covers Auth and Firestore
 at this scale.
 
-## 2. Turn on email sign-in, with no self-signup
+## 2. Turn on email sign-in
 
 **Build → Authentication → Get started → Email/Password → Enable.**
 Leave *Email link (passwordless sign-in)* off.
 
-Then **Settings → User actions** and untick **Enable create (sign-up)**. This
-is the invitation-only part: without it, anyone who finds the page can make
-themselves an account.
+Anyone can make their own account for now. When the monthly fee arrives, the
+gate becomes the subscription rather than the sign-up: every account carries a
+`plan` field, set to `free` on first sign-in, and the paywall reads that. To
+close sign-ups instead, **Settings → User actions** → untick **Enable create
+(sign-up)**, and make each account by hand under **Authentication → Users**.
 
 ## 3. Create the database and lock it down
 
@@ -38,11 +40,11 @@ the data.
 **Authentication → Settings → Authorised domains → Add domain** →
 `evzomethod.com`. Sign-in is refused from anywhere not on that list.
 
-## 6. Make an account for each walker
+## 6. Walkers make their own accounts
 
-**Authentication → Users → Add user**: email and a first password. Send those
-to the person; they can change it later through *Forgot your password?* on the
-sign-in screen.
+The sign-in screen has a **Create account** tab. Nothing to do here unless you
+have closed sign-ups, in which case add each person under **Authentication →
+Users → Add user** and send them the first password.
 
 ## 7. Publish
 

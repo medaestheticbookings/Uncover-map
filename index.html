@@ -110,6 +110,9 @@ input[type=range]{accent-color:var(--accent);width:140px}
 #gate input:focus{outline:2px solid var(--accent);outline-offset:2px}
 #gate button{width:100%;padding:15px;border:0;border-radius:14px;background:var(--accent);color:var(--accent-ink);font:800 16px var(--display);cursor:pointer}
 #gate button:disabled{opacity:.5;cursor:default}
+#gate .tabs{display:flex;gap:4px;padding:4px;margin-bottom:14px;border-radius:14px;background:rgba(255,255,255,.05)}
+#gate .tabs button{flex:1;padding:10px;border:0;border-radius:10px;background:none;color:var(--muted);font:700 13px var(--body);cursor:pointer}
+#gate .tabs button.on{background:rgba(255,255,255,.10);color:var(--text)}
 #gate .err{color:#ff8e8e;font-size:13px;min-height:18px;margin-top:12px}
 #gate .foot{margin:16px 0 0;font-size:12px}
 .who{position:fixed;z-index:610;right:max(12px,env(safe-area-inset-right,0px));bottom:calc(env(safe-area-inset-bottom,0px) + 14px + var(--banner));font-size:11px;color:var(--muted)}
@@ -128,10 +131,14 @@ input[type=range]{accent-color:var(--accent);width:140px}
 <div id="gate">
   <div class="card">
     <h1>Uncover<span>.</span></h1>
-    <p id="gateMsg">Sign in to walk. Accounts are made by invitation — ask for one if you do not have it yet.</p>
+    <p id="gateMsg">Sign in to walk, or make an account — it takes a moment and your map follows you.</p>
+    <div class="tabs" id="gTabs">
+      <button type="button" class="on" data-mode="in">Sign in</button>
+      <button type="button" data-mode="up">Create account</button>
+    </div>
     <form id="gateForm">
       <input id="gEmail" type="email" autocomplete="username" placeholder="Email" aria-label="Email" required>
-      <input id="gPass" type="password" autocomplete="current-password" placeholder="Password" aria-label="Password" required>
+      <input id="gPass" type="password" autocomplete="current-password" placeholder="Password" aria-label="Password" required minlength="6">
       <button id="gBtn" type="submit">Sign in</button>
     </form>
     <div class="err" id="gErr" role="alert"></div>
@@ -485,8 +492,8 @@ window.__startUncover = (user, sync) => {
  */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import {
-  getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged,
-  sendPasswordResetEmail, setPersistence, browserLocalPersistence,
+  getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut,
+  onAuthStateChanged, sendPasswordResetEmail, setPersistence, browserLocalPersistence,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, setDoc,
@@ -494,7 +501,11 @@ import {
 
 const $ = (id) => document.getElementById(id);
 const KEY = "uncover.v1";
-const fail = (msg) => { $("gErr").textContent = msg; $("gBtn").disabled = false; $("gBtn").textContent = "Sign in"; };
+const fail = (msg) => {
+  $("gErr").textContent = msg;
+  $("gBtn").disabled = false;
+  $("gBtn").textContent = document.querySelector('#gTabs .on')?.dataset.mode === "up" ? "Create account" : "Sign in";
+};
 
 let config = null;
 try {
@@ -541,6 +552,11 @@ if (config) {
     // while offline should not erase the first one's map.
     try {
       const snap = await getDoc(doc(db, "users", user.uid));
+      if (!snap.exists()) {
+        // First sign-in. `plan` is what the paywall will read once there is
+        // one; everyone is free until then.
+        await setDoc(doc(db, "users", user.uid), { plan: "free", since: Date.now() }, { merge: true });
+      }
       const remote = snap.exists() ? snap.data().state : null;
       if (remote) {
         const localRaw = localStorage.getItem(KEY);
@@ -555,20 +571,41 @@ if (config) {
     window.__startUncover(user, sync);
   });
 
+  let mode = "in";
+  $("gTabs").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-mode]");
+    if (!btn) return;
+    mode = btn.dataset.mode;
+    for (const b of $("gTabs").children) b.classList.toggle("on", b === btn);
+    $("gBtn").textContent = mode === "in" ? "Sign in" : "Create account";
+    $("gPass").autocomplete = mode === "in" ? "current-password" : "new-password";
+    $("gPass").placeholder = mode === "in" ? "Password" : "Password — 6 characters or more";
+    $("gReset").hidden = mode !== "in";
+    $("gErr").textContent = "";
+  });
+
   $("gateForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     $("gErr").textContent = "";
+    $("gErr").style.color = "";
     $("gBtn").disabled = true;
-    $("gBtn").textContent = "Signing in…";
+    $("gBtn").textContent = mode === "in" ? "Signing in…" : "Creating…";
+    const email = $("gEmail").value.trim(), pass = $("gPass").value;
     try {
-      await signInWithEmailAndPassword(auth, $("gEmail").value.trim(), $("gPass").value);
+      if (mode === "in") await signInWithEmailAndPassword(auth, email, pass);
+      else await createUserWithEmailAndPassword(auth, email, pass);
     } catch (err) {
       const code = String(err.code || "");
-      fail(code.includes("too-many-requests")
-        ? "Too many tries. Wait a minute."
-        : code.includes("network")
-          ? "No connection."
-          : "That email and password do not match an account.");
+      fail(
+        code.includes("too-many-requests") ? "Too many tries. Wait a minute." :
+        code.includes("network") ? "No connection." :
+        code.includes("email-already-in-use") ? "That email already has an account — sign in instead." :
+        code.includes("weak-password") ? "Six characters or more, please." :
+        code.includes("invalid-email") ? "That does not look like an email address." :
+        code.includes("operation-not-allowed") ? "New accounts are closed right now." :
+        mode === "in" ? "That email and password do not match an account." :
+        "Could not create that account.",
+      );
     }
   });
 
