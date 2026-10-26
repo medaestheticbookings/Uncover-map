@@ -48,6 +48,15 @@ html,body{height:100%;margin:0;background:var(--fog);color:var(--text);font-fami
 .attr-i{display:inline-grid;place-items:center;width:18px;height:18px;flex:none;font-style:normal;font-size:10px;color:var(--muted);cursor:pointer}
 .attr-t{padding-right:9px;white-space:nowrap}
 .me{filter:drop-shadow(0 2px 3px rgba(0,0,0,.55))}
+.friend{filter:drop-shadow(0 2px 3px rgba(0,0,0,.5));cursor:pointer;animation:bob 2.4s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+/* Flying characters ride above their own shadow, which stays on the ground
+   and shrinks as they rise — the shadow is what sells the height. */
+.me.fly{animation:hover 3s ease-in-out infinite}
+.me.fly::after{content:"";position:absolute;left:50%;bottom:-9px;transform:translateX(-50%);width:20px;height:6px;border-radius:50%;background:rgba(0,0,0,.45);filter:blur(1.5px);animation:shade 3s ease-in-out infinite}
+@keyframes hover{0%,100%{transform:translateY(-6px)}50%{transform:translateY(-12px)}}
+@keyframes shade{0%,100%{width:20px;opacity:.45}50%{width:14px;opacity:.3}}
+@media (prefers-reduced-motion: reduce){.me.fly,.me.fly::after,.friend{animation:none}}
 /* Just the map and the character. One tap anywhere brings the rest back. */
 body.zen .top,body.zen .bottom,body.zen .who{opacity:0;pointer-events:none;transition:opacity .25s}
 body.zen .leaflet-control-attribution{opacity:.35}
@@ -238,7 +247,6 @@ input[type=range]{accent-color:var(--accent);width:140px}
   </div>
   <div class="row"><p><span data-i18n="weight">Your weight</span><small data-i18n="weightSub">Only used to work out calories</small></p><div><input type="number" id="kg" min="30" max="250" step="1" style="width:76px;padding:8px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--text);text-align:center"> kg</div></div>
   <div class="row"><p><span data-i18n="stride">Step length</span><small data-i18n="strideSub">For the step count. 75 cm suits most people</small></p><div><input type="number" id="stride" min="40" max="110" step="1" style="width:76px;padding:8px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--text);text-align:center"> cm</div></div>
-  <div class="row"><p><span data-i18n="radius">Reveal radius</span><small data-i18n="radiusSub">How much of the map opens around you</small></p><div><input type="range" id="radius" min="20" max="100" step="5"> <span id="radiusVal"></span></div></div>
   <div class="row"><p><span data-i18n="wake">Keep screen on</span><small data-i18n="wakeSub">Tracking pauses when the screen locks</small></p><label class="switch"><input type="checkbox" id="wake"><span></span></label></div>
   <div class="row"><p><span data-i18n="test">Test mode</span><small data-i18n="testSub">Tap the map to walk there, for trying it at home</small></p><label class="switch"><input type="checkbox" id="test"><span></span></label></div>
   <div class="row"><p><span data-i18n="backup">Backup</span><small data-i18n="backupSub">A copy you can keep</small></p><div class="btns"><button class="btn" id="exp" data-i18n="export">Export</button><button class="btn" id="imp" data-i18n="import">Import</button><input type="file" id="impFile" accept="application/json" hidden></div></div>
@@ -256,12 +264,13 @@ window.__startUncover = (user, sync) => {
   const CELL_M = CELL * 111320;
   const DEFAULT_CENTER = { lat:34.7754, lng:32.4245 }; // Pafos
 
-  let S = { cells:{}, count:0, total:0, days:{}, dayCells:{}, badges:{}, radius:40, kg:70, stride:75, wake:true, test:false, last:null, sat:false };
+  let S = { cells:{}, count:0, total:0, days:{}, dayCells:{}, badges:{}, kg:70, stride:75, wake:true, test:false, last:null, sat:false };
   try { const raw = localStorage.getItem(KEY); if (raw) S = Object.assign(S, JSON.parse(raw)); } catch(e){}
   S.count = Object.keys(S.cells).length;
   S.badges = S.badges || {}; S.dayCells = S.dayCells || {};
   S.kg = S.kg || 70; S.stride = S.stride || 75; S.mode = S.mode || 'walk';
   S.theme = S.theme || 'dark'; S.lang = S.lang || 'el';
+  S.xp = S.xp || 0; S.miles = S.miles || {};
   try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch(e){}
   let saveT; const save = () => { clearTimeout(saveT); saveT = setTimeout(() => {
     const json = JSON.stringify(S);
@@ -269,12 +278,27 @@ window.__startUncover = (user, sync) => {
     sync.push(json);
   }, 600); };
 
+  // ---------- how you are moving ----------
+  // Four ways, and nothing else. Each carries the fastest it can plausibly
+  // be done; anything quicker is a vehicle and reveals nothing, which is the
+  // whole point of the thing. METs are the Compendium of Physical Activities
+  // values for a moderate effort.
+  const MODES = [
+    { id:'walk', name:'Walk',  max:2.8,  met:3.5, radius:40, steps:true,  icon:'M9 3v6l-3 6M15 7l2 5-3 2v5' },
+    { id:'run',  name:'Run',   max:6.5,  met:9.8, radius:45, steps:true,  icon:'M10 2v5l-4 4 2 4M14 8l3 4-4 3v4' },
+    { id:'bike', name:'Cycle', max:13.0, met:7.5, radius:55, steps:false, icon:'M5 17a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 17a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM8 14l3-6h4' },
+    { id:'swim', name:'Swim',  max:2.2,  met:8.3, radius:35, steps:false, icon:'M3 18c2 0 2-1.5 4.5-1.5S10 18 12 18s2-1.5 4.5-1.5S19 18 21 18M6 11l4-3 4 3' },
+  ];
+  const mode = () => MODES.find(m => m.id === S.mode) || MODES[0];
+
   // ---------- grid ----------
   function lngStep(i){ return CELL / Math.max(Math.cos(((i+.5)*CELL)*Math.PI/180), .05); }
   function dist(a,b,c,d){ const R=6371000, t=Math.PI/180, x=(c-a)*t, y=(d-b)*t;
     const h=Math.sin(x/2)**2+Math.cos(a*t)*Math.cos(c*t)*Math.sin(y/2)**2; return 2*R*Math.asin(Math.sqrt(h)); }
   function reveal(lat, lng){
-    const rad = S.radius, dLat = rad/111320;
+    // Fixed per mode, never a setting: the only way to open more ground is
+    // to cover more of it.
+    const rad = mode().radius, dLat = rad/111320;
     const i0 = Math.floor((lat-dLat)/CELL), i1 = Math.floor((lat+dLat)/CELL);
     let added = 0;
     for (let i=i0;i<=i1;i++){
@@ -387,6 +411,8 @@ window.__startUncover = (user, sync) => {
     { id:'trimmer', name:'Strimmer', lvl:25, px:["....2222....","...255552...","..25333352..","..23433432..","...233332...","..21111112..",".2111111172.","..21111172..","...2222.7...","...2..2.7...","...2..2.666.","........666."] },
     { id:'blower', name:'Blower', lvl:30, px:["....2222....","...255552...","..25333352..","..23433432..","...233332...","..21111112..",".211111112..","..2111112777","...22222.77.","...2..2..7..","...2..2.....","............"] },
     { id:'tractor', name:'Tractor', lvl:40, px:["............","....22222...","....21112...","....21112...","..2222222...",".211111112..",".21111111222",".21111111112","222222222222",".2772...2772",".2772...2772","..22.....22."] },
+    { id:'dragon', name:'Dragon', lvl:60, fly:true, px:["............","..........2.",".2.......252","2522....2552","255522225552",".25111111552",".21111111112","..21111112..","..2.2..2.2..","...2....2...","............","............"] },
+    { id:'flyer', name:'Winged', lvl:80, fly:true, px:["...2....2...","..252..252..",".25552225552","..25333352..","..23433432..","...233332...","..21111112..",".2111111112.","..21111112..","...22..22...","............","............"] },
     { id:'astro', name:'Spaceman', lvl:50, px:["....2222....","...244442...","..24444442..","..24433442..","..24444442..","...244442...","....2442....","..21111112..",".2111111112.",".2711111172.","..21111112..","...22..22..."] }
   ];
 
@@ -395,8 +421,10 @@ window.__startUncover = (user, sync) => {
 
   /** Grid to SVG. One rect per run of identical pixels, so the markup stays
       small enough to sit in a map icon that moves every second. */
-  function charSvg(id, colour, size){
-    const c = charById(id), px = c.px, n = px.length;
+  function charSvg(id, colour, size){ return pixelSvg(charById(id).px, colour, size); }
+
+  function pixelSvg(px, colour, size){
+    const n = px.length;
     let r = '';
     for (let y = 0; y < n; y++){
       const row = px[y];
@@ -418,7 +446,8 @@ window.__startUncover = (user, sync) => {
   function meIcon(){
     const size = 34;
     return L.divIcon({ className:'', iconSize:[size,size], iconAnchor:[size/2,size/2],
-      html:'<div class="me">' + charSvg(S.char || 'walk', S.colour || palette()[0], size) + '</div>' });
+      html:'<div class="me' + (charById(S.char || 'walk').fly ? ' fly' : '') + '" style="position:relative">' +
+            charSvg(S.char || 'walk', S.colour || palette()[0], size) + '</div>' });
   }
 
   function applyCharacter(){
@@ -460,19 +489,6 @@ window.__startUncover = (user, sync) => {
     if (fresh.length) toast('Unlocked — ' + fresh.map(c => c.name).join(', '));
   }
 
-
-  // ---------- how you are moving ----------
-  // Four ways, and nothing else. Each carries the fastest it can plausibly
-  // be done; anything quicker is a vehicle and reveals nothing, which is the
-  // whole point of the thing. METs are the Compendium of Physical Activities
-  // values for a moderate effort.
-  const MODES = [
-    { id:'walk', name:'Walk',  max:2.8,  met:3.5, steps:true,  icon:'M9 3v6l-3 6M15 7l2 5-3 2v5' },
-    { id:'run',  name:'Run',   max:6.5,  met:9.8, steps:true,  icon:'M10 2v5l-4 4 2 4M14 8l3 4-4 3v4' },
-    { id:'bike', name:'Cycle', max:13.0, met:7.5, steps:false, icon:'M5 17a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 17a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM8 14l3-6h4' },
-    { id:'swim', name:'Swim',  max:2.2,  met:8.3, steps:false, icon:'M3 18c2 0 2-1.5 4.5-1.5S10 18 12 18s2-1.5 4.5-1.5S19 18 21 18M6 11l4-3 4 3' },
-  ];
-  const mode = () => MODES.find(m => m.id === S.mode) || MODES[0];
 
   function renderModes(){
     const g = $('pickMode');
@@ -604,6 +620,93 @@ window.__startUncover = (user, sync) => {
     };
   }
 
+
+  // ---------- experience, milestones and company ----------
+  // Experience is the one currency: ground opened, distance covered and
+  // saying hello. Levels come from it, and characters come from levels, so
+  // everything in the game is paid for by moving.
+  const XP_PER_CELL = 1, XP_PER_10M = 1, XP_PER_GREET = 25;
+  const xpFor = lvl => (lvl - 1) * (lvl - 1) * 600;
+  const lvlFromXp = xp => Math.floor(Math.sqrt(Math.max(xp, 0) / 600)) + 1;
+
+  // All-time kilometres worth announcing. Close together early, so the first
+  // week feels like it is going somewhere, then further apart.
+  const MILESTONES = [1, 3, 5, 7, 10, 15, 20, 25, 30, 42, 50, 75, 100, 150, 200, 300, 500];
+
+  function checkMilestones(){
+    const km = S.total / 1000;
+    const done = S.miles || (S.miles = {});
+    for (const m of MILESTONES){
+      if (km < m || done[m]) continue;
+      done[m] = Date.now();
+      toast((S.lang === 'en' ? 'Achievement unlocked — ' : 'Επίτευγμα — ') + m + ' km');
+    }
+  }
+
+  const ANIMALS = {"cat":["............","..2......2..",".252....252.",".25552222552",".21111111112",".21411114112",".21111111112","..2.2..2.2..","..2.2..2.2..","..........2.",".........2..","............"],"bird":["............","............","....2222....","...211112...","..21141112..","..21111112..","..21111112..","...2111122..","....2222....","....2..2....","....2..2....","............"],"goat":["............","..2.....2...","..52...25...","..25222552..",".2111111112.",".2141111412.",".2111111112.","..2.2..2.2..","..2.2..2.2..","............","............","............"],"turtle":["............","............","....222222..","..2211111112",".21111111112",".21111111112","..2222222222","..2.2..2.2..","..2.2..2.2..","............","............","............"],"hedgie":["............","............","...2.2.2....","..2121212...",".2111111112.",".2111111132.","..21111132..","...222222...","....2..2....","............","............","............"]};
+  const ANIMAL_IDS = Object.keys(ANIMALS);
+  const ANIMAL_COLOURS = ['#c98b4b','#8fb3d9','#d9d2c3','#7fa86a','#c47b9c'];
+  const GREET_RADIUS = 30;   // metres you must be within to say hello
+  const MAX_FRIENDS = 3;
+
+  let friends = [];          // { id, lat, lng, kind, colour, marker }
+
+  /**
+   * Company only ever appears on ground already uncovered.
+   *
+   * That is a safety rule, not a design one: the game must never be a reason
+   * to step into a road, a field or the sea. If you have already walked it,
+   * it is somewhere you can be.
+   */
+  function spawnFriends(){
+    if (friends.length >= MAX_FRIENDS) return;
+    const keys = Object.keys(S.cells);
+    if (keys.length < 40) return;        // too little known ground to be sure
+    const here = S.last;
+    if (!here) return;
+
+    for (let tries = 0; tries < 40 && friends.length < MAX_FRIENDS; tries++){
+      const k = keys[(Math.random() * keys.length) | 0];
+      const comma = k.indexOf(',');
+      const i = +k.slice(0, comma), j = +k.slice(comma + 1);
+      const lat = (i + .5) * CELL, lng = (j + .5) * lngStep(i);
+      const d = dist(here[0], here[1], lat, lng);
+      // Near enough to walk to, far enough to be worth the walk.
+      if (d < 60 || d > 400) continue;
+      if (friends.some(f => dist(f.lat, f.lng, lat, lng) < 80)) continue;
+
+      const kind = ANIMAL_IDS[(Math.random() * ANIMAL_IDS.length) | 0];
+      const colour = ANIMAL_COLOURS[(Math.random() * ANIMAL_COLOURS.length) | 0];
+      const f = { id: k + ':' + Date.now(), lat, lng, kind, colour };
+      f.marker = L.marker([lat, lng], {
+        icon: L.divIcon({ className:'', iconSize:[30,30], iconAnchor:[15,15],
+          html:'<div class="friend">' + pixelSvg(ANIMALS[kind], colour, 30) + '</div>' }),
+        zIndexOffset: 900,
+      }).addTo(map);
+      f.marker.on('click', () => greet(f));
+      friends.push(f);
+    }
+  }
+
+  function greet(f){
+    const here = S.last;
+    const near = here && dist(here[0], here[1], f.lat, f.lng) <= GREET_RADIUS;
+    if (!near){
+      toast(S.lang === 'en' ? 'Too far away — walk closer to say hello'
+        : 'Πολύ μακριά — πλησίασε για να χαιρετήσεις');
+      return;
+    }
+    addXp(XP_PER_GREET);
+    map.removeLayer(f.marker);
+    friends = friends.filter(x => x !== f);
+    toast((S.lang === 'en' ? 'Hello! +' : 'Γεια! +') + XP_PER_GREET + ' XP');
+    save();
+  }
+
+  function addXp(n){
+    S.xp = (S.xp || 0) + n;
+  }
+
   function placeMe(lat,lng,acc){
     if (!meMarker){ meMarker = L.marker([lat,lng],{icon:meIcon(), interactive:false, zIndexOffset:1000}).addTo(map);
       accCircle = L.circle([lat,lng],{radius:acc, color:S.colour||COLOURS[0], weight:1, fillOpacity:.08, interactive:false}).addTo(map); }
@@ -615,6 +718,7 @@ window.__startUncover = (user, sync) => {
     setGps(acc <= 35 ? 'on' : 'weak', simulated ? 'Test mode' : (acc <= 35 ? 'GPS ±'+Math.round(acc)+'m' : 'Weak GPS ±'+Math.round(acc)+'m'));
     placeMe(lat, lng, acc);
     updateTemp(lat, lng);
+    spawnFriends();
     if (follow && !simulated) map.panTo([lat,lng], { animate:false });
     if (acc > 40) return;
     let newCells = 0;
@@ -629,6 +733,8 @@ window.__startUncover = (user, sync) => {
       for (let s=1;s<=steps;s++) newCells += reveal(prev.lat+(lat-prev.lat)*s/steps, prev.lng+(lng-prev.lng)*s/steps);
       S.total += d; const day = today(); S.days[day] = (S.days[day]||0) + d;
       if (newCells) S.dayCells[day] = (S.dayCells[day]||0) + newCells;
+      addXp(newCells * XP_PER_CELL + Math.floor(d / 10) * XP_PER_10M);
+      checkMilestones();
     }
     prev = {lat,lng,t}; S.last = [lat,lng];
     if (newCells) redraw();
@@ -756,10 +862,11 @@ window.__startUncover = (user, sync) => {
     const st = stepsToday();
     $('sSteps').textContent = st === null ? '—' : st.toLocaleString('en-GB');
     $('sKcal').innerHTML = kcalToday() + '<em>kcal</em>';
-    const lvl = Math.floor(Math.sqrt(S.count/400)) + 1, lo = (lvl-1)**2*400, hi = lvl**2*400;
+    const xp = S.xp || 0;
+    const lvl = lvlFromXp(xp), lo = xpFor(lvl), hi = xpFor(lvl + 1);
     $('lvl').textContent = 'Lv ' + lvl;
-    $('bar').style.width = ((S.count-lo)/(hi-lo)*100).toFixed(1)+'%';
-    $('lvlNext').textContent = Math.round((S.count-lo)/(hi-lo)*100) + '%';
+    $('bar').style.width = ((xp-lo)/(hi-lo)*100).toFixed(1)+'%';
+    $('lvlNext').textContent = (xp - lo) + ' / ' + (hi - lo) + ' XP';
     if (lvl > (S.lvl||1)){ toast('Level up! You reached level ' + lvl); announceUnlocks(S.lvl||1, lvl); }
     const lvlChanged = lvl !== (S.lvl||1);
     S.lvl = lvl;
@@ -786,8 +893,6 @@ window.__startUncover = (user, sync) => {
 
   $('kg').value = S.kg; $('kg').onchange = e => { S.kg = Math.min(250, Math.max(30, +e.target.value || 70)); e.target.value = S.kg; save(); updateStats(); };
   $('stride').value = S.stride; $('stride').onchange = e => { S.stride = Math.min(110, Math.max(40, +e.target.value || 75)); e.target.value = S.stride; save(); updateStats(); };
-  $('radius').value = S.radius; $('radiusVal').textContent = S.radius+'m';
-  $('radius').oninput = e => { S.radius = +e.target.value; $('radiusVal').textContent = S.radius+'m'; save(); };
   $('wake').checked = S.wake; $('wake').onchange = e => { S.wake = e.target.checked; save(); if (S.wake && watchId!==null) lockScreen(); };
   $('test').checked = S.test; $('test').onchange = e => { S.test = e.target.checked; prev = null; save();
     if (S.test){ openSheet(false); toast('Test mode on: tap the map to walk'); setGps('on','Test mode'); } else if (watchId===null) setGps('','GPS off'); };
@@ -802,7 +907,8 @@ window.__startUncover = (user, sync) => {
   let resetArmed = false;
   $('reset').onclick = () => { const b = $('reset');
     if (!resetArmed){ resetArmed = true; b.textContent = 'Tap again to reset'; b.classList.add('confirm'); setTimeout(()=>{ resetArmed=false; b.textContent='Reset'; b.classList.remove('confirm'); }, 3000); return; }
-    S.cells = {}; S.count = 0; S.total = 0; S.days = {}; S.dayCells = {}; S.lvl = 1; prev = null; save(); updateStats(); redraw();
+    // Experience, badges and milestones are kept: those walks happened.
+    S.cells = {}; S.count = 0; S.total = 0; S.days = {}; S.dayCells = {}; prev = null; save(); updateStats(); redraw();
     resetArmed = false; b.textContent = 'Reset'; b.classList.remove('confirm'); toast('Map reset'); };
 
   updateStats(); redraw();
