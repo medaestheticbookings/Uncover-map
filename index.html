@@ -982,11 +982,14 @@ let config = null;
 try {
   config = (await import("./firebase-config.js")).firebaseConfig;
 } catch (_) {
-  // Deployed before the Firebase project exists: say so rather than failing
-  // at the first click with something cryptic.
-  $("gateMsg").textContent = "Sign-in is not set up on this site yet.";
-  $("gateForm").hidden = true;
-  $("gReset").hidden = true;
+  // Deployed before the Firebase project exists. Rather than show a door
+  // that opens onto nothing, run the game on this device alone: the map is
+  // kept in local storage and simply does not follow you anywhere yet.
+  document.getElementById("gate").remove();
+  window.__startUncover(
+    { email: "" },
+    { push(){}, signOut(){ try { localStorage.removeItem(KEY); } catch (e) {} location.reload(); } },
+  );
 }
 
 if (config) {
