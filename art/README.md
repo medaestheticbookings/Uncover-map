@@ -65,3 +65,39 @@ The colour swatches in the game tint the vector characters. A drawn image is
 not tinted — it keeps the colours it was painted with. That is deliberate: real
 artwork should not be recoloured by a filter. The swatch still sets the colour
 of everything else that is yours.
+
+---
+
+# Monsters and bosses
+
+Same folder, same rules. 512 × 512, transparent, named after the id.
+
+## Shared style line for monsters
+
+> Cute cartoon monster character, thick black outline, bold saturated colour
+> with soft cel shading, huge expressive eyes and a wide toothy mouth,
+> chunky rounded body with tiny limbs, full body, centered, transparent
+> background, no ground or scenery, square 1:1, no text, no watermark.
+
+| file | prompt (after the style line) |
+| --- | --- |
+| `slime.webp` | A green jelly blob with two big round eyes and a wobbly grin, glossy highlight on top. |
+| `peeper.webp` | A purple one-eyed monster with two small horns and a mouth full of sharp teeth. |
+| `gobbler.webp` | An orange monster that is mostly mouth, two eyes on stalks, enormous teeth, tiny legs. |
+| `flapper.webp` | A blue bat-monster with one large eye, pointed ears, small leathery wings, fangs. |
+| `spook.webp` | A pale ghost with a ragged tail, two round eyes and a small startled mouth. |
+| `ember.webp` | A living flame with an angry face, orange and yellow, little arms. |
+
+## Shared style line for bosses
+
+> Cartoon monster boss, huge and heavy, thick black outline, rich colour with
+> soft cel shading, massive torso and belly, thick arms, small legs, big
+> tusks and horns, heavy brow, intimidating but comic, full body, standing,
+> centered, transparent background, square 1:1, no text, no watermark.
+
+| file | prompt (after the style line) |
+| --- | --- |
+| `boss-grunt.webp` | A green ogre brute with a huge gut, tusks jutting up from the lower jaw, a leather belt. |
+| `boss-frost.webp` | A blue shaggy ice brute, two ivory horns, frost on the shoulders, pale belly. |
+| `boss-crim.webp` | A deep red demon brute with heavy curling horns and burning eyes. |
+| `boss-oneeye.webp` | A purple cyclops brute with one enormous eye, curled horns and a pair of tusks. |
