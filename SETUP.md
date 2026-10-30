@@ -12,14 +12,18 @@ Everything below is done once, in a browser, by whoever owns the Google
 account. Nothing in the app changes afterwards — fill in
 `firebase-config.js`, deploy it, and the same door starts syncing.
 
-## 0. The invite codes
+## 0. Who can sign up
 
-Five work out of the box:
+Anyone, right now. Sign-up is open.
+
+To close it again, set `INVITE_ONLY = true` in `index.html`. The code field
+comes back on the sign-up tab and no account is made without one. Five codes
+are already in the list:
 
     EVZO-WALK   EVZO-START   EVZO-FRIEND   EVZO-TEAM   EVZO-GIFT
 
-Only their hashes are in `index.html`, so reading the page gives nobody a
-code. To add one:
+Only their hashes are in the page, so reading the source gives nobody a code.
+To add one:
 
     node -e "console.log(require('crypto').createHash('sha256').update('YOUR-CODE').digest('hex'))"
 
