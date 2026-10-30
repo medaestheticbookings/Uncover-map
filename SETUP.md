@@ -1,7 +1,29 @@
 # Uncover — turning sign-in on
 
-The app is finished and waiting for a Firebase project. Everything below is
-done once, in a browser, by whoever owns the Google account.
+Sign-in already works. Without a Firebase project the app keeps accounts on
+the phone itself: each person signs up with an invite code, gets their own
+map, and nothing leaves the device. That is enough to hand the app to people
+today.
+
+What a Firebase project adds is one thing: the map follows the account from
+phone to phone. Until then a new phone starts under fog.
+
+Everything below is done once, in a browser, by whoever owns the Google
+account. Nothing in the app changes afterwards — fill in
+`firebase-config.js`, deploy it, and the same door starts syncing.
+
+## 0. The invite codes
+
+Five work out of the box:
+
+    EVZO-WALK   EVZO-START   EVZO-FRIEND   EVZO-TEAM   EVZO-GIFT
+
+Only their hashes are in `index.html`, so reading the page gives nobody a
+code. To add one:
+
+    node -e "console.log(require('crypto').createHash('sha256').update('YOUR-CODE').digest('hex'))"
+
+and paste the result into the `INVITES` list.
 
 ## 1. Create the project
 
